@@ -1,0 +1,204 @@
+tools:
+  - name: browse_itchio_assets
+    description: Browse official itch.io game-asset RSS using allowlisted price and tag filters.
+    source_file: scripts/browse_itchio_assets.py
+    execution: sync
+    affinity: any
+    timeout_hint_secs: 30
+    enforce_thread_affinity: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true
+    group: itchio-assets
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        price:
+          type: string
+          enum: [any, free, on-sale]
+          default: any
+        tag:
+          type: [string, "null"]
+          enum: [2d, 3d, audio, fonts, godot, gui, low-poly, maya, music, pixel-art, sound-effects, sprites, textures, unity, unreal-engine, null]
+        page:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 1
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+    output_schema:
+      type: object
+      required: [success, message, error, context]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        error: {type: [string, "null"]}
+        prompt: {type: [string, "null"]}
+        context:
+          type: object
+          properties:
+            assets:
+              type: array
+              items:
+                type: object
+                required: [title, project_url, license_status, download_status, source]
+            count: {type: integer, minimum: 0}
+            feed_url: {type: string}
+
+  - name: list_owned_itchio_assets
+    description: List asset-classified projects owned by the API-key profile through butlerd.
+    source_file: scripts/list_owned_itchio_assets.py
+    execution: sync
+    affinity: any
+    timeout_hint_secs: 60
+    enforce_thread_affinity: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true
+    group: itchio-assets
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        query:
+          type: [string, "null"]
+          maxLength: 200
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+        cursor: {}
+        butler_path:
+          type: [string, "null"]
+    output_schema:
+      type: object
+      required: [success, message, error, context]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        error: {type: [string, "null"]}
+        prompt: {type: [string, "null"]}
+        context:
+          type: object
+          properties:
+            assets: {type: array, items: {type: object}}
+            count: {type: integer, minimum: 0}
+            next_cursor: {}
+
+  - name: inspect_owned_itchio_asset
+    description: Verify exact itch.io ownership and list the asset project's uploads through butlerd.
+    source_file: scripts/inspect_owned_itchio_asset.py
+    execution: sync
+    affinity: any
+    timeout_hint_secs: 90
+    enforce_thread_affinity: true
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true
+    group: itchio-assets
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [download_key_id, game_id]
+      properties:
+        download_key_id:
+          type: integer
+          minimum: 1
+        game_id:
+          type: integer
+          minimum: 1
+        butler_path:
+          type: [string, "null"]
+    output_schema:
+      type: object
+      required: [success, message, error, context]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        error: {type: [string, "null"]}
+        prompt: {type: [string, "null"]}
+        context:
+          type: object
+          properties:
+            asset: {type: object}
+            uploads: {type: array, items: {type: object}}
+            license_status: {type: string, enum: [review_required]}
+
+  - name: download_owned_itchio_asset
+    description: Download an exact owned upload into a new path and return a validated AssetDescriptor after fail-closed license and content checks.
+    source_file: scripts/download_owned_itchio_asset.py
+    execution: async
+    job_strategy: monolithic
+    affinity: any
+    timeout_hint_secs: 1800
+    enforce_thread_affinity: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: true
+    group: itchio-assets
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [download_key_id, game_id, upload_id, output_dir, license_text, license_source_url]
+      properties:
+        download_key_id: {type: integer, minimum: 1}
+        game_id: {type: integer, minimum: 1}
+        upload_id: {type: integer, minimum: 1}
+        output_dir: {type: string, minLength: 1}
+        license_text: {type: string, minLength: 1, maxLength: 4000}
+        license_source_url: {type: string, pattern: "^https://"}
+        license_spdx: {type: [string, "null"], maxLength: 128}
+        author: {type: [string, "null"], maxLength: 300}
+        title: {type: [string, "null"], maxLength: 300}
+        butler_path: {type: [string, "null"]}
+        max_download_bytes: {type: integer, minimum: 1, maximum: 8589934592, default: 2147483648}
+        max_total_bytes: {type: integer, minimum: 1, maximum: 17179869184, default: 4294967296}
+        max_files: {type: integer, minimum: 1, maximum: 50000, default: 10000}
+    output_schema:
+      type: object
+      required: [success, message, error, context]
+      properties:
+        success: {type: boolean}
+        message: {type: string}
+        error: {type: [string, "null"]}
+        prompt: {type: [string, "null"]}
+        context:
+          type: object
+          properties:
+            asset_descriptor:
+              type: object
+              required: [asset_id, variants, attribution]
+              properties:
+                asset_id: {type: string}
+                variants:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [local_path, format]
+                    properties:
+                      local_path: {type: string}
+                      format: {type: string}
+                attribution:
+                  type: object
+                  required: [source_url, license_text]
+                  properties:
+                    source_url: {type: string}
+                    license_spdx: {type: [string, "null"]}
+                    license_text: {type: string, minLength: 1}
+            provenance_path: {type: string}
+            manifest_sha256: {type: string, pattern: "^[0-9a-f]{64}$"}

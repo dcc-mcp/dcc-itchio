@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>itch.io game assets</title>
+    <item>
+      <title>Pixel Village</title>
+      <link>https://creator.itch.io/pixel-village</link>
+      <description>&lt;p&gt;A small &amp;amp; friendly pixel pack.&lt;/p&gt;</description>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Untrusted external entry</title>
+      <link>https://example.com/not-itch</link>
+    </item>
+  </channel>
+</rss>

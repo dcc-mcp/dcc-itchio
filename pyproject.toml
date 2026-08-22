@@ -1,0 +1,18 @@
+[project]
+name = "dcc-itchio-skills"
+version = "0.1.0"
+description = "DCC-MCP Skills for safe itch.io asset acquisition and preview-gated publishing"
+requires-python = ">=3.7"
+license = {text = "MIT"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py37"
+line-length = 110
+extend-exclude = [".tools"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "SIM"]

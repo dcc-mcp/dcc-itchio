@@ -1,0 +1,186 @@
+tools:
+  - name: list_itchio_projects
+    description: List projects owned by the itch.io profile authenticated through an environment API key.
+    source_file: scripts/list_itchio_projects.py
+    execution: sync
+    affinity: any
+    enforce_thread_affinity: true
+    timeout_hint_secs: 30
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true
+      deferred_hint: false
+    input_schema:
+      type: object
+      properties:
+        max_results:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 100
+      additionalProperties: false
+    output_schema:
+      type: object
+      required: [success, message, context]
+      additionalProperties: true
+    next-tools:
+      on-success: [itchio_publish__inspect_itchio_channels]
+
+  - name: inspect_itchio_channels
+    description: Inspect structured latest and pending build state for an exact itch.io project or channel with butler status --json.
+    source_file: scripts/inspect_itchio_channels.py
+    execution: sync
+    affinity: any
+    enforce_thread_affinity: true
+    timeout_hint_secs: 90
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true
+      deferred_hint: false
+    input_schema:
+      type: object
+      required: [project]
+      properties:
+        project:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$"
+          description: Exact lowercase owner/game-slug destination without a channel.
+        channel:
+          type: string
+          default: ""
+          pattern: "^$|^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          description: Optional exact channel name.
+        butler_path:
+          type: string
+          default: ""
+          description: Optional path to an official butler executable; otherwise use BUTLER_PATH or PATH.
+      additionalProperties: false
+    output_schema:
+      type: object
+      required: [success, message, context]
+      additionalProperties: true
+    next-tools:
+      on-success: [itchio_publish__preview_itchio_push]
+
+  - name: preview_itchio_push
+    description: Hash and license-check an exported game directory, compare it with the current itch.io channel, and return a non-mutating evidence-bound receipt.
+    source_file: scripts/preview_itchio_push.py
+    execution: async
+    job_strategy: monolithic
+    affinity: any
+    enforce_thread_affinity: true
+    timeout_hint_secs: 3600
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+      open_world_hint: true
+      deferred_hint: true
+    input_schema:
+      type: object
+      required: [source_directory, license_provenance_path, project, channel, version]
+      properties:
+        source_directory:
+          type: string
+          minLength: 1
+          description: Complete prebuilt game directory previously checked by game-release-package.
+        license_provenance_path:
+          type: string
+          minLength: 1
+          description: license-provenance.json emitted by game-release-package for this source directory.
+        project:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$"
+          description: Exact lowercase owner/game-slug destination.
+        channel:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          description: Exact itch.io upload channel, such as windows-64.
+        version:
+          type: string
+          pattern: "^[0-9A-Za-z][0-9A-Za-z._+-]*$"
+          description: Butler user version; must equal license provenance product_version.
+        hidden:
+          type: boolean
+          default: true
+          description: Bind a new channel as hidden until it is reviewed on itch.io.
+        butler_path:
+          type: string
+          default: ""
+          description: Optional path to an official butler executable; otherwise use BUTLER_PATH or PATH.
+      additionalProperties: false
+    output_schema:
+      type: object
+      required: [success, message, context]
+      additionalProperties: true
+    call_examples:
+      - arguments:
+          source_directory: "D:/Builds/MyGame-Win64"
+          license_provenance_path: "D:/Releases/MyGame/license-provenance.json"
+          project: studio/my-game
+          channel: windows-64
+          version: 1.0.0
+          hidden: true
+        note: Create a read-only receipt that must be explicitly approved before upload.
+    next-tools:
+      on-success: [itchio_publish__push_itchio_build]
+      on-failure: [itchio_publish__inspect_itchio_channels]
+
+  - name: push_itchio_build
+    description: Revalidate an unchanged preview receipt and upload that exact game directory to that exact itch.io channel with parent-drift protection.
+    source_file: scripts/push_itchio_build.py
+    execution: async
+    job_strategy: monolithic
+    affinity: any
+    enforce_thread_affinity: true
+    timeout_hint_secs: 7200
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
+      open_world_hint: true
+      deferred_hint: true
+    input_schema:
+      type: object
+      required: [source_directory, license_provenance_path, project, channel, version, preview_receipt]
+      properties:
+        source_directory:
+          type: string
+          minLength: 1
+          description: The same complete prebuilt game directory used by preview_itchio_push.
+        license_provenance_path:
+          type: string
+          minLength: 1
+          description: The same license-provenance.json used by preview_itchio_push.
+        project:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$"
+        channel:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        version:
+          type: string
+          pattern: "^[0-9A-Za-z][0-9A-Za-z._+-]*$"
+        hidden:
+          type: boolean
+          default: true
+        preview_receipt:
+          type: object
+          description: Unedited preview_receipt returned by preview_itchio_push after user approval.
+          additionalProperties: true
+        butler_path:
+          type: string
+          default: ""
+          description: Optional path to the same official butler executable used for preview.
+      additionalProperties: false
+    output_schema:
+      type: object
+      required: [success, message, context]
+      additionalProperties: true
+    next-tools:
+      on-success: [itchio_publish__inspect_itchio_channels]
+      on-failure: [itchio_publish__inspect_itchio_channels]
